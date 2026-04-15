@@ -265,9 +265,10 @@ export default function App() {
         DATA: ${JSON.stringify(aiPayload)}
 
         RULES:
-        1. Summarize activities into the sections defined below.
-        2. In "distribution", the percentages MUST sum exactly to 100%. 
-        3. For each section, provide specific achievements based on the work logs.
+        1. Perform a deep analysis of each log and distribute them logically across ALL provided sections. Avoid grouping everything into one section.
+        2. Ensure every section has relevant content if data is available in the logs.
+        3. Maintain highly professional and concise bullet points.
+        4. In "distribution", the percentages MUST sum exactly to 100%. 
         
         RESPONSE FORMAT:
         {
@@ -293,7 +294,7 @@ export default function App() {
           body: JSON.stringify({
             model: "llama-3.3-70b-versatile",
             messages: [
-              { role: "system", content: "You are a professional performance analyst. Generate concise, high-impact JSON reports." },
+              { role: "system", content: "You are a professional performance analyst. Categorize work logs into the provided sections based on their primary function and deliver professional results in JSON." },
               { role: "user", content: prompt }
             ],
             response_format: { type: "json_object" },
