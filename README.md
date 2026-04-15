@@ -2,17 +2,17 @@
 
 **The Ultimate AI-Powered Performance Summarizer**
 
-A premium, enterprise-grade React application designed to transform raw Google Sheets work logs into high-impact, professional performance reports using Google's Gemini AI.
+A premium, enterprise-grade React application designed to transform raw Google Sheets work logs into high-impact, professional performance reports using Llama AI.
 
 ![Premium UI Snapshot](https://img.shields.io/badge/UI-Premium_White-indigo)
 ![Tech Stack](https://img.shields.io/badge/Stack-Vite_%7C_React_%7C_Tailwind_v4-blue)
-![AI](https://img.shields.io/badge/AI-Gemini_2.0_Flash-orange)
+![AI](https://img.shields.io/badge/AI-Llama_3.3_70B-orange)
 
 ---
 
 ## ✨ Features
 
-- **🧠 Intelligent Synthesis**: leverages Gemini AI to distill complex activity logs into 6 professional categories.
+- **🧠 Intelligent Synthesis**: leverages Llama AI to distill complex activity logs into 6 professional categories.
 - **📊 Precise Analytics**: Deterministic calculation of active working days, leave balance, and primary project focus.
 - **💎 Premium Design System**: A "Premium White" aesthetic built with Tailwind CSS v4, Glassmorphism, and Shadcn-inspired components.
 - **📄 Pro Export**: One-click PDF generation with a bulletproof compatibility layer for modern CSS.
@@ -24,7 +24,7 @@ A premium, enterprise-grade React application designed to transform raw Google S
 ## 🛠️ Technology Stack
 
 - **Core**: React 18 + Vite
-- **AI Engine**: Google Generative AI (Gemini 2.0 Flash)
+- **AI Engine**: Google Generative AI (Llama 3.3 70B)
 - **Styling**: Tailwind CSS v4 (PostCSS)
 - **Components**: Radix UI + Framer Motion (Shadcn-style)
 - **PDF Engine**: html2pdf.js + html2canvas
@@ -36,7 +36,7 @@ A premium, enterprise-grade React application designed to transform raw Google S
 
 ### 1. Prerequisites
 - Node.js (v18+)
-- A Gemini API Key from [Google AI Studio](https://aistudio.google.com/)
+- A Llama API Key from [Groq](https://groq.com/)
 - A Google Sheet with columns: `Date`, `Resource`, `Project`, `Planned Activity for the Day`, and `Total Hours`.
 
 ### 2. Installation
@@ -51,7 +51,7 @@ npm install
 ### 3. Configuration
 Create a `.env` file in the root directory:
 ```env
-VITE_GEMINI_API_KEY=your_gemini_api_key
+VITE_GROQ_API_KEY=your_groq_api_key
 VITE_SHEET_URL=your_google_sheet_csv_url
 VITE_SHEET_NAME=Sheet1
 ```
@@ -80,4 +80,4 @@ The application uses a robust `findValue` logic that searches for column headers
 
 ---
 
-Built with ❤️ for **G A** by **Antigravity AI**
+Built with ❤️ for **G A**

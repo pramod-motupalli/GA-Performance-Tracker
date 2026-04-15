@@ -56,6 +56,7 @@ const APP_TITLE = "GA Performance Tracker";
 export default function App() {
   // --- State ---
   const [apiKey, setApiKey] = useState(import.meta.env.VITE_GEMINI_API_KEY || localStorage.getItem('gemini_api_key') || '');
+  const [groqApiKey, setGroqApiKey] = useState(import.meta.env.VITE_GROQ_API_KEY || localStorage.getItem('groq_api_key') || '');
   const [sheetUrl, setSheetUrl] = useState(import.meta.env.VITE_SHEET_URL || localStorage.getItem('sheet_url') || '');
   const [sheetName, setSheetName] = useState(import.meta.env.VITE_SHEET_NAME || localStorage.getItem('sheet_name') || 'Sheet1');
   
@@ -63,6 +64,7 @@ export default function App() {
   const [toDate, setToDate] = useState('2026-03-31');
   const [filterName, setFilterName] = useState('Pramod');
   const [filterProject, setFilterProject] = useState('All Projects');
+  const [role, setRole] = useState('Developer');
   
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState(null);
@@ -232,11 +234,26 @@ export default function App() {
 
       console.log("DEBUG: Data being sent to AI (minimized):", aiPayload);
       
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+      const devSections = [
+        { "id": 1, "title": "Functionalities Being Rolled Out", "items": ["string"] },
+        { "id": 2, "title": "Process Optimization Ideas", "items": ["string"] },
+        { "id": 3, "title": "X-Factor Deliverables", "items": ["string"] },
+        { "id": 4, "title": "UI/UX Refinements", "items": ["string"] },
+        { "id": 5, "title": "Third-Party API Integrations", "items": ["string"] },
+        { "id": 6, "title": "Maintenance and Stability", "items": ["string"] }
+      ];
+
+      const designerSections = [
+        { "id": 1, "title": "Artwork & Video Design Performance", "items": ["string"] },
+        { "id": 2, "title": "UI/UX Design Performance", "items": ["string"] },
+        { "id": 3, "title": "Logo Design Performance", "items": ["string"] },
+        { "id": 4, "title": "Cross-Team Contribution", "items": ["string"] }
+      ];
+
+      const activeSections = role === 'Designer' ? designerSections : devSections;
 
       const prompt = `
-        Analyze these work logs and generate a professional monthly report in JSON.
+        Analyze these work logs and generate a professional monthly report in JSON for a ${role}.
         Employee: ${filterName}
         Period: ${fromDate} to ${toDate}
         
@@ -248,37 +265,62 @@ export default function App() {
         DATA: ${JSON.stringify(aiPayload)}
 
         RULES:
-        1. Summarize activities into the 6 sections below.
+        1. Summarize activities into the sections defined below.
         2. In "distribution", the percentages MUST sum exactly to 100%. 
-        3. Use the keys: "summary" { "totalDays", "leaveDays", "primaryProject", "distribution" } and "sections" [ { "id", "title", "items" } ].
+        3. For each section, provide specific achievements based on the work logs.
         
+        RESPONSE FORMAT:
         {
           "summary": {
             "totalDays": ${stats.totalDays},
             "leaveDays": ${stats.leaveDays},
             "primaryProject": "${stats.primaryProject}",
-            "distribution": { "Feature development": 0, "Testing": 0, "Meetings": 0 }
+            "distribution": { "Primary Execution": 0, "Creative/Testing": 0, "Meetings": 0 }
           },
-          "sections": [
-            { "id": 1, "title": "Functionalities Being Rolled Out", "items": ["string"] },
-            { "id": 2, "title": "Process Optimization Ideas", "items": ["string"] },
-            { "id": 3, "title": "X-Factor Deliverables", "items": ["string"] },
-            { "id": 4, "title": "UI/UX Refinements", "items": ["string"] },
-            { "id": 5, "title": "Third-Party API Integrations", "items": ["string"] },
-            { "id": 6, "title": "Maintenance and Stability", "items": ["string"] }
-          ]
+          "sections": ${JSON.stringify(activeSections)}
         }
       `;
 
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
-      
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error("Failed to parse AI response.");
-      
-      const reportData = JSON.parse(jsonMatch[0]);
-      setReport(reportData);
+      // --- AI API Selection ---
+      // Use Groq if available (faster/free), fallback to Gemini
+      if (groqApiKey) {
+        const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${groqApiKey}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            model: "llama-3.3-70b-versatile",
+            messages: [
+              { role: "system", content: "You are a professional performance analyst. Generate concise, high-impact JSON reports." },
+              { role: "user", content: prompt }
+            ],
+            response_format: { type: "json_object" },
+            temperature: 0.2
+          })
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(`Groq API Error: ${errorData.error?.message || response.statusText}`);
+        }
+
+        const data = await response.json();
+        const reportData = JSON.parse(data.choices[0].message.content);
+        setReport(reportData);
+      } else {
+        // Fallback to Gemini
+        const genAI = new GoogleGenerativeAI(apiKey);
+        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        const text = response.text();
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) throw new Error("Failed to parse AI response.");
+        const reportData = JSON.parse(jsonMatch[0]);
+        setReport(reportData);
+      }
     } catch (err) {
       setError(err.message || "An error occurred while generating the report.");
     } finally {
@@ -439,6 +481,18 @@ export default function App() {
                 </SelectTrigger>
                 <SelectContent>
                   {RESOURCE_LIST.map(name => <SelectItem key={name} value={name}>{name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-600 flex items-center gap-2"><Briefcase size={14} /> Role</label>
+              <Select value={role} onValueChange={setRole}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select Role" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Developer">Developer</SelectItem>
+                  <SelectItem value="Designer">Designer</SelectItem>
                 </SelectContent>
               </Select>
             </div>
