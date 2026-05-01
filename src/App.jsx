@@ -199,6 +199,7 @@ export default function App() {
     };
 
     const generateReport = async () => {
+        console.log("DEBUG: generateReport triggered");
         if (!groqApiKey) {
             setError(
                 "Please provide Groq/Llama API Key in .env or contact admin.",
@@ -569,7 +570,7 @@ export default function App() {
         <div className="relative min-h-screen p-6 md:p-12">
             <div className="bg-gradient-mesh" />
 
-            <main className="max-w-6xl mx-auto space-y-10">
+            <main className="relative z-10 max-w-6xl mx-auto space-y-10">
                 {/* Header */}
                 <header className="flex flex-col md:flex-row md:items-center justify-between gap-6 animate-fade-in">
                     <div>
@@ -603,6 +604,22 @@ export default function App() {
                     </div>
                 </header>
 
+                {/* Error Display */}
+                <AnimatePresence>
+                    {error && (
+                        <motion.div 
+                            initial={{ opacity: 0, y: -20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -20 }}
+                            className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl flex items-center gap-3 animate-pulse relative z-50"
+                        >
+                            <ShieldCheck className="h-5 w-5" />
+                            <p className="text-sm font-medium">{error}</p>
+                            <Button variant="ghost" size="sm" className="ml-auto text-red-600 hover:bg-red-100" onClick={() => setError(null)}>Dismiss</Button>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
                 {/* Config Panel */}
                 <AnimatePresence>
                     {showConfig && (
@@ -614,6 +631,18 @@ export default function App() {
                         >
                             <Card className="border-indigo-100 bg-white/50 backdrop-blur-sm">
                                 <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6">
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-semibold text-slate-700">
+                                            Groq (Llama) API Key
+                                        </label>
+                                        <Input 
+                                            type="password"
+                                            value={groqApiKey} 
+                                            onChange={(e) => setGroqApiKey(e.target.value)}
+                                            placeholder="gsk_..."
+                                        />
+                                        <p className="text-[10px] text-slate-400">Prefer setting VITE_GROQ_API_KEY in .env</p>
+                                    </div>
                                     <div className="space-y-2">
                                         <label className="text-sm font-semibold text-slate-700">
                                             Google Sheet URL
