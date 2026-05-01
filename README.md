@@ -24,7 +24,7 @@ A premium, enterprise-grade React application designed to transform raw Google S
 ## 🛠️ Technology Stack
 
 - **Core**: React 18 + Vite
-- **AI Engine**: Google Generative AI (Llama 3.3 70B)
+- **AI Engine**: Groq Cloud (Llama 3.3 70B)
 - **Styling**: Tailwind CSS v4 (PostCSS)
 - **Components**: Radix UI + Framer Motion (Shadcn-style)
 - **PDF Engine**: html2pdf.js + html2canvas

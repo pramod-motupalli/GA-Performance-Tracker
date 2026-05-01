@@ -24,7 +24,6 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import html2pdf from 'html2pdf.js';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import axios from 'axios';
 
 // UI Components
@@ -55,7 +54,6 @@ const APP_TITLE = "GA Performance Tracker";
 
 export default function App() {
   // --- State ---
-  const [apiKey, setApiKey] = useState(import.meta.env.VITE_GEMINI_API_KEY || localStorage.getItem('gemini_api_key') || '');
   const [groqApiKey, setGroqApiKey] = useState(import.meta.env.VITE_GROQ_API_KEY || localStorage.getItem('groq_api_key') || '');
   const [sheetUrl, setSheetUrl] = useState(import.meta.env.VITE_SHEET_URL || localStorage.getItem('sheet_url') || '');
   const [sheetName, setSheetName] = useState(import.meta.env.VITE_SHEET_NAME || localStorage.getItem('sheet_name') || 'Sheet1');
@@ -76,11 +74,10 @@ export default function App() {
 
   // --- Effects ---
   useEffect(() => {
-    localStorage.setItem('gemini_api_key', apiKey);
     localStorage.setItem('groq_api_key', groqApiKey);
     localStorage.setItem('sheet_url', sheetUrl);
     localStorage.setItem('sheet_name', sheetName);
-  }, [apiKey, groqApiKey, sheetUrl, sheetName]);
+  }, [groqApiKey, sheetUrl, sheetName]);
 
   // --- Helpers ---
   const parseCSV = (csvText) => {
@@ -117,6 +114,27 @@ export default function App() {
         return obj;
       }, {});
     });
+  };
+  
+  const formatDuration = (decimalHours) => {
+    const totalSeconds = Math.round(decimalHours * 3600);
+    const h = Math.floor(totalSeconds / 3600);
+    const m = Math.floor((totalSeconds % 3600) / 60);
+    const s = totalSeconds % 60;
+    return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
+
+  const parseHours = (value) => {
+    if (!value) return 0;
+    const str = String(value).trim();
+    if (str.includes(':')) {
+      const parts = str.split(':');
+      const h = parseFloat(parts[0]) || 0;
+      const m = parseFloat(parts[1]) || 0;
+      const s = parseFloat(parts[2]) || 0;
+      return h + (m / 60) + (s / 3600);
+    }
+    return parseFloat(str) || 0;
   };
 
   const fetchSheetData = async () => {
@@ -169,9 +187,9 @@ export default function App() {
   };
 
   const generateReport = async () => {
-    if (!groqApiKey && !apiKey) {
-      setError("Please provide at least one AI API Key (Groq/Llama preferred) in .env or configuration.");
-      setShowConfig(true);
+    if (!groqApiKey) {
+      setError("Please provide Groq/Llama API Key in .env or contact admin.");
+      // setShowConfig(true); // Don't show config anymore as keys are hidden
       return;
     }
 
@@ -212,6 +230,7 @@ export default function App() {
 
       let totalLeaveDays = 0;
       let totalHoursCount = 0;
+      const projectHours = {};
       const uniqueDates = [...new Set(resourceData.map(r => findValue(r, 'Date')))];
       
       uniqueDates.forEach(d => {
@@ -219,8 +238,21 @@ export default function App() {
         let dayLeaveScore = 0;
         
         dayLogs.forEach(r => {
-          const hours = parseFloat(findValue(r, 'Total Hours')) || 0;
+          const rawHours = findValue(r, 'Total Hours');
+          const hours = parseHours(rawHours);
           totalHoursCount += hours;
+          
+          let proj = findValue(r, 'Project') || findValue(r, 'Client') || '';
+          const activity = (findValue(r, 'Activity') || '').trim();
+          
+          // If project is empty or "Daily Huddle" / "Leave" is in activity, prioritize activity as category
+          if (!proj || activity.toLowerCase().includes('huddle') || activity.toLowerCase().includes('leave')) {
+            if (activity.toLowerCase().includes('huddle')) proj = "Daily Huddle";
+            else if (activity.toLowerCase().includes('leave')) proj = "Leave";
+            else if (!proj) proj = "Uncategorized";
+          }
+          
+          projectHours[proj] = (projectHours[proj] || 0) + hours;
 
           const act = (findValue(r, 'Activity') + findValue(r, 'Project') + findValue(r, 'Comment')).toLowerCase();
           if (act.includes('leave') || act.includes('holiday')) {
@@ -237,8 +269,14 @@ export default function App() {
       const stats = {
         totalDays: uniqueDates.length - totalLeaveDays,
         leaveDays: totalLeaveDays,
-        totalHours: totalHoursCount.toFixed(1),
-        primaryProject: filterProject && filterProject !== "All Projects" ? filterProject : "Various Projects"
+        totalHours: totalHoursCount.toFixed(2),
+        formattedTotalHours: formatDuration(totalHoursCount),
+        primaryProject: filterProject && filterProject !== "All Projects" ? filterProject : "Various Projects",
+        projectHours: Object.entries(projectHours).map(([name, hours]) => ({
+          name,
+          hours: hours.toFixed(2),
+          formattedHours: formatDuration(hours)
+        }))
       };
 
       // 2. Filter content for the AI based on the Project filter
@@ -314,7 +352,6 @@ export default function App() {
       `;
 
       // --- AI API Selection ---
-      // Use Groq if available (faster/free), fallback to Gemini
       if (groqApiKey) {
         const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
           method: "POST",
@@ -340,17 +377,14 @@ export default function App() {
 
         const data = await response.json();
         const reportData = JSON.parse(data.choices[0].message.content);
-        setReport(reportData);
-      } else {
-        // Fallback to Gemini
-        const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        const text = response.text();
-        const jsonMatch = text.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) throw new Error("Failed to parse AI response.");
-        const reportData = JSON.parse(jsonMatch[0]);
+        
+        // Inject our local stats (including project hours) into the report
+        reportData.summary = {
+          ...reportData.summary,
+          projectHours: stats.projectHours,
+          formattedTotalHours: stats.formattedTotalHours
+        };
+        
         setReport(reportData);
       }
     } catch (err) {
@@ -414,7 +448,8 @@ export default function App() {
   };
 
   const copyEmailDraft = () => {
-    const emailBody = `Respected ${DEFAULT_MANAGER},\n\nWorking report for ${new Date(fromDate).toLocaleString('default', { month: 'long', year: 'numeric' })}\n\nOverall Report Summary:\n\n* Total active working days: ${report.summary.totalDays}\n* Total hours worked: ${report.summary.totalHours}\n* Leave days: ${report.summary.leaveDays} full days\n* Primary project: ${report.summary.primaryProject}\n\n* Work distribution:\n${Object.entries(report.summary.distribution).map(([key, val]) => `  * ${key}: ${val}%`).join('\n')}\n\n${report.sections.map(s => `\n${s.id}. ${s.title}\n\n${s.items.map(item => `* ${item}`).join('\n')}`).join('\n')}\n\nBest regards,\n${filterName}`;
+    const projectBreakdown = report.summary.projectHours.map(p => `  * ${p.name}: ${p.formattedHours}`).join('\n');
+    const emailBody = `Respected ${DEFAULT_MANAGER},\n\nWorking report for ${new Date(fromDate).toLocaleString('default', { month: 'long', year: 'numeric' })}\n\nOverall Report Summary:\n\n* Total active working days: ${report.summary.totalDays}\n* Total hours worked: ${report.summary.formattedTotalHours}\n* Leave days: ${report.summary.leaveDays} full days\n\n* Project Breakdown:\n${projectBreakdown}\n* Grand Total = ${report.summary.formattedTotalHours}\n\n* Work distribution:\n${Object.entries(report.summary.distribution).map(([key, val]) => `  * ${key}: ${val}%`).join('\n')}\n\n${report.sections.map(s => `\n${s.id}. ${s.title}\n\n${s.items.map(item => `* ${item}`).join('\n')}`).join('\n')}\n\nBest regards,\n${filterName}`;
     navigator.clipboard.writeText(emailBody.trim());
     alert("Email draft copied to clipboard!");
   };
@@ -467,24 +502,6 @@ export default function App() {
             >
               <Card className="border-indigo-100 bg-white/50 backdrop-blur-sm">
                 <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6">
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold text-slate-700">Groq (Llama) API Key</label>
-                    <Input 
-                      type="password"
-                      value={groqApiKey} 
-                      onChange={e => setGroqApiKey(e.target.value)}
-                      placeholder="gsk_..."
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold text-slate-700">Gemini API Key (Fallback)</label>
-                    <Input 
-                      type="password"
-                      value={apiKey} 
-                      onChange={e => setApiKey(e.target.value)}
-                      placeholder="AIza..."
-                    />
-                  </div>
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-slate-700">Google Sheet URL</label>
                     <Input 
@@ -623,11 +640,25 @@ export default function App() {
                       </div>
                       <div className="bg-slate-50/50 p-6 rounded-3xl border border-slate-100/50">
                         <p className="text-slate-500 text-xs font-bold uppercase mb-1">Total Hours</p>
-                        <p className="text-4xl font-black text-slate-800 tracking-tighter">{report.summary.totalHours}</p>
+                        <p className="text-4xl font-black text-slate-800 tracking-tighter">{report.summary.formattedTotalHours}</p>
                       </div>
-                      <div className="col-span-2 bg-gradient-to-br from-indigo-50 to-white p-6 rounded-3xl border border-indigo-100/50 shadow-sm transition-transform hover:scale-[1.02]">
-                        <p className="text-indigo-600 text-xs font-bold uppercase mb-1">Primary Deliverable</p>
-                        <p className="text-2xl font-bold text-indigo-900 line-clamp-1">{report.summary.primaryProject}</p>
+                      <div className="col-span-2 bg-gradient-to-br from-indigo-50 to-white p-6 rounded-3xl border border-indigo-100/50 shadow-sm">
+                        <div className="flex justify-between items-center mb-4">
+                          <p className="text-indigo-600 text-xs font-bold uppercase">Project Breakdown</p>
+                          <p className="text-indigo-600 text-xs font-bold uppercase">Total Hours</p>
+                        </div>
+                        <div className="space-y-2">
+                          {report.summary.projectHours.map((proj, idx) => (
+                            <div key={idx} className="flex justify-between items-center text-sm">
+                              <span className="text-slate-700 font-medium">{proj.name}</span>
+                              <span className="text-slate-900 font-bold font-mono">{proj.formattedHours}</span>
+                            </div>
+                          ))}
+                          <div className="pt-2 mt-2 border-t border-indigo-100 flex justify-between items-center text-sm font-black text-indigo-900">
+                            <span>Grand Total =</span>
+                            <span className="font-mono">{report.summary.formattedTotalHours}</span>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -707,7 +738,7 @@ export default function App() {
             </DialogTitle>
           </DialogHeader>
           <div className="bg-slate-50 p-8 rounded-2xl border border-slate-200 font-mono text-[13px] h-[50vh] overflow-y-auto my-6 text-slate-700 whitespace-pre-wrap leading-relaxed">
-            {report && `Respected ${DEFAULT_MANAGER},\n\nWorking report for ${new Date(fromDate).toLocaleString('default', { month: 'long', year: 'numeric' })}\n\nOverall Report Summary:\n\n* Total active working days: ${report.summary.totalDays}\n* Total hours worked: ${report.summary.totalHours}\n* Leave days: ${report.summary.leaveDays} full days\n* Primary focus: ${report.summary.primaryProject}\n\n* Work distribution:\n${Object.entries(report.summary.distribution).map(([key, val]) => `  * ${key}: ${val}%`).join('\n')}\n\n${report.sections.map(s => `\n${s.id}. ${s.title}\n\n${s.items.map(item => `* ${item}`).join('\n')}`).join('\n')}\n\nBest regards,\n${filterName}`}
+            {report && `Respected ${DEFAULT_MANAGER},\n\nWorking report for ${new Date(fromDate).toLocaleString('default', { month: 'long', year: 'numeric' })}\n\nOverall Report Summary:\n\n* Total active working days: ${report.summary.totalDays}\n* Total hours worked: ${report.summary.formattedTotalHours}\n* Leave days: ${report.summary.leaveDays} full days\n\n* Project Breakdown:\n${report.summary.projectHours.map(p => `  * ${p.name}: ${p.formattedHours}`).join('\n')}\n* Grand Total = ${report.summary.formattedTotalHours}\n\n* Work distribution:\n${Object.entries(report.summary.distribution).map(([key, val]) => `  * ${key}: ${val}%`).join('\n')}\n\n${report.sections.map(s => `\n${s.id}. ${s.title}\n\n${s.items.map(item => `* ${item}`).join('\n')}`).join('\n')}\n\nBest regards,\n${filterName}`}
           </div>
           <DialogFooter className="gap-3 sm:gap-0">
             <Button variant="outline" onClick={() => setShowEmailModal(false)}>Refine</Button>
