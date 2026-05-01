@@ -77,9 +77,10 @@ export default function App() {
   // --- Effects ---
   useEffect(() => {
     localStorage.setItem('gemini_api_key', apiKey);
+    localStorage.setItem('groq_api_key', groqApiKey);
     localStorage.setItem('sheet_url', sheetUrl);
     localStorage.setItem('sheet_name', sheetName);
-  }, [apiKey, sheetUrl, sheetName]);
+  }, [apiKey, groqApiKey, sheetUrl, sheetName]);
 
   // --- Helpers ---
   const parseCSV = (csvText) => {
@@ -168,8 +169,8 @@ export default function App() {
   };
 
   const generateReport = async () => {
-    if (!apiKey) {
-      setError("Please provide a Gemini API Key in .env or configuration.");
+    if (!groqApiKey && !apiKey) {
+      setError("Please provide at least one AI API Key (Groq/Llama preferred) in .env or configuration.");
       setShowConfig(true);
       return;
     }
@@ -186,29 +187,52 @@ export default function App() {
       };
 
       // 1. Calculate stats based on ALL data for this resource in the date range (ignoring project filter for stats)
+      const parseISO = (str) => {
+        if (!str) return null;
+        // Handle YYYY-MM-DD and potentially DD-MM-YYYY or MM/DD/YYYY
+        // For simplicity, we assume YYYY-MM-DD or standard JS-parseable format
+        // We set to noon to avoid timezone shift issues
+        const d = new Date(str);
+        if (isNaN(d.getTime())) return null;
+        d.setHours(12, 0, 0, 0);
+        return d;
+      };
+
       const resourceData = rawData.filter(row => {
-        const date = findValue(row, 'Date');
+        const dateStr = findValue(row, 'Date');
         const resourceValue = findValue(row, 'Resource') || findValue(row, 'Employee') || '';
         const nameMatch = filterName ? resourceValue.toLowerCase().includes(filterName.toLowerCase().trim()) : true;
         
-        const rowDate = new Date(date);
-        const start = new Date(fromDate);
-        const end = new Date(toDate);
-        return nameMatch && (date ? (rowDate >= start && rowDate <= end) : false);
+        const rowDate = parseISO(dateStr);
+        const start = parseISO(fromDate);
+        const end = parseISO(toDate);
+        
+        return nameMatch && (rowDate && start && end ? (rowDate >= start && rowDate <= end) : false);
       });
 
+      let totalLeaveDays = 0;
       const uniqueDates = [...new Set(resourceData.map(r => findValue(r, 'Date')))];
-      const leaveDaysList = uniqueDates.filter(d => {
+      
+      uniqueDates.forEach(d => {
         const dayLogs = resourceData.filter(r => findValue(r, 'Date') === d);
-        return dayLogs.some(r => {
-          const act = (findValue(r, 'Activity') + findValue(r, 'Project')).toLowerCase();
-          return act.includes('leave') || act.includes('holiday');
+        let dayLeaveScore = 0;
+        
+        dayLogs.forEach(r => {
+          const act = (findValue(r, 'Activity') + findValue(r, 'Project') + findValue(r, 'Comment')).toLowerCase();
+          if (act.includes('leave') || act.includes('holiday')) {
+            if (act.includes('half')) {
+              dayLeaveScore = Math.max(dayLeaveScore, 0.5);
+            } else {
+              dayLeaveScore = 1.0;
+            }
+          }
         });
+        totalLeaveDays += dayLeaveScore;
       });
 
       const stats = {
-        totalDays: uniqueDates.length - leaveDaysList.length,
-        leaveDays: leaveDaysList.length,
+        totalDays: uniqueDates.length - totalLeaveDays,
+        leaveDays: totalLeaveDays,
         primaryProject: filterProject && filterProject !== "All Projects" ? filterProject : "Various Projects"
       };
 
@@ -313,7 +337,7 @@ export default function App() {
       } else {
         // Fallback to Gemini
         const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
         const result = await model.generateContent(prompt);
         const response = await result.response;
         const text = response.text();
@@ -436,6 +460,24 @@ export default function App() {
             >
               <Card className="border-indigo-100 bg-white/50 backdrop-blur-sm">
                 <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6">
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-slate-700">Groq (Llama) API Key</label>
+                    <Input 
+                      type="password"
+                      value={groqApiKey} 
+                      onChange={e => setGroqApiKey(e.target.value)}
+                      placeholder="gsk_..."
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-slate-700">Gemini API Key (Fallback)</label>
+                    <Input 
+                      type="password"
+                      value={apiKey} 
+                      onChange={e => setApiKey(e.target.value)}
+                      placeholder="AIza..."
+                    />
+                  </div>
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-slate-700">Google Sheet URL</label>
                     <Input 
@@ -619,7 +661,7 @@ export default function App() {
                 </div>
 
                 <div className="pt-16 border-t border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-6 text-[11px] text-slate-400 uppercase font-bold tracking-[0.2em]">
-                  <p>Authenticated by GA Intelligence</p>
+                  <p>Authenticated by Llama Intelligence</p>
                   <div className="text-center sm:text-right">
                     <p className="text-slate-900 text-lg tracking-normal font-black mb-1">{filterName}</p>
                     <p>Software Engineer</p>
