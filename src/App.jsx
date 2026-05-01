@@ -211,6 +211,7 @@ export default function App() {
       });
 
       let totalLeaveDays = 0;
+      let totalHoursCount = 0;
       const uniqueDates = [...new Set(resourceData.map(r => findValue(r, 'Date')))];
       
       uniqueDates.forEach(d => {
@@ -218,6 +219,9 @@ export default function App() {
         let dayLeaveScore = 0;
         
         dayLogs.forEach(r => {
+          const hours = parseFloat(findValue(r, 'Total Hours')) || 0;
+          totalHoursCount += hours;
+
           const act = (findValue(r, 'Activity') + findValue(r, 'Project') + findValue(r, 'Comment')).toLowerCase();
           if (act.includes('leave') || act.includes('holiday')) {
             if (act.includes('half')) {
@@ -233,6 +237,7 @@ export default function App() {
       const stats = {
         totalDays: uniqueDates.length - totalLeaveDays,
         leaveDays: totalLeaveDays,
+        totalHours: totalHoursCount.toFixed(1),
         primaryProject: filterProject && filterProject !== "All Projects" ? filterProject : "Various Projects"
       };
 
@@ -284,6 +289,7 @@ export default function App() {
         STATS (DO NOT CHANGE THESE):
         - Total Effective Working Days: ${stats.totalDays}
         - Total Leave/Holiday Days: ${stats.leaveDays}
+        - Total Hours Worked: ${stats.totalHours}
         - Primary Focus: ${stats.primaryProject}
 
         DATA: ${JSON.stringify(aiPayload)}
@@ -299,6 +305,7 @@ export default function App() {
           "summary": {
             "totalDays": ${stats.totalDays},
             "leaveDays": ${stats.leaveDays},
+            "totalHours": ${stats.totalHours},
             "primaryProject": "${stats.primaryProject}",
             "distribution": { "Primary Execution": 0, "Creative/Testing": 0, "Meetings": 0 }
           },
@@ -407,7 +414,7 @@ export default function App() {
   };
 
   const copyEmailDraft = () => {
-    const emailBody = `Respected ${DEFAULT_MANAGER},\n\nWorking report for ${new Date(fromDate).toLocaleString('default', { month: 'long', year: 'numeric' })}\n\nOverall Report Summary:\n\n* Total active working days: ${report.summary.totalDays}\n* Leave days: ${report.summary.leaveDays} full days\n* Primary project: ${report.summary.primaryProject}\n\n* Work distribution:\n${Object.entries(report.summary.distribution).map(([key, val]) => `  * ${key}: ${val}%`).join('\n')}\n\n${report.sections.map(s => `\n${s.id}. ${s.title}\n\n${s.items.map(item => `* ${item}`).join('\n')}`).join('\n')}\n\nBest regards,\n${filterName}`;
+    const emailBody = `Respected ${DEFAULT_MANAGER},\n\nWorking report for ${new Date(fromDate).toLocaleString('default', { month: 'long', year: 'numeric' })}\n\nOverall Report Summary:\n\n* Total active working days: ${report.summary.totalDays}\n* Total hours worked: ${report.summary.totalHours}\n* Leave days: ${report.summary.leaveDays} full days\n* Primary project: ${report.summary.primaryProject}\n\n* Work distribution:\n${Object.entries(report.summary.distribution).map(([key, val]) => `  * ${key}: ${val}%`).join('\n')}\n\n${report.sections.map(s => `\n${s.id}. ${s.title}\n\n${s.items.map(item => `* ${item}`).join('\n')}`).join('\n')}\n\nBest regards,\n${filterName}`;
     navigator.clipboard.writeText(emailBody.trim());
     alert("Email draft copied to clipboard!");
   };
@@ -614,6 +621,10 @@ export default function App() {
                         <p className="text-slate-500 text-xs font-bold uppercase mb-1">Leave Balance</p>
                         <p className="text-4xl font-black text-slate-800 tracking-tighter">{report.summary.leaveDays}</p>
                       </div>
+                      <div className="bg-slate-50/50 p-6 rounded-3xl border border-slate-100/50">
+                        <p className="text-slate-500 text-xs font-bold uppercase mb-1">Total Hours</p>
+                        <p className="text-4xl font-black text-slate-800 tracking-tighter">{report.summary.totalHours}</p>
+                      </div>
                       <div className="col-span-2 bg-gradient-to-br from-indigo-50 to-white p-6 rounded-3xl border border-indigo-100/50 shadow-sm transition-transform hover:scale-[1.02]">
                         <p className="text-indigo-600 text-xs font-bold uppercase mb-1">Primary Deliverable</p>
                         <p className="text-2xl font-bold text-indigo-900 line-clamp-1">{report.summary.primaryProject}</p>
@@ -696,7 +707,7 @@ export default function App() {
             </DialogTitle>
           </DialogHeader>
           <div className="bg-slate-50 p-8 rounded-2xl border border-slate-200 font-mono text-[13px] h-[50vh] overflow-y-auto my-6 text-slate-700 whitespace-pre-wrap leading-relaxed">
-            {report && `Respected ${DEFAULT_MANAGER},\n\nWorking report for ${new Date(fromDate).toLocaleString('default', { month: 'long', year: 'numeric' })}\n\nOverall Report Summary:\n\n* Total active working days: ${report.summary.totalDays}\n* Leave days: ${report.summary.leaveDays} full days\n* Primary focus: ${report.summary.primaryProject}\n\n* Work distribution:\n${Object.entries(report.summary.distribution).map(([key, val]) => `  * ${key}: ${val}%`).join('\n')}\n\n${report.sections.map(s => `\n${s.id}. ${s.title}\n\n${s.items.map(item => `* ${item}`).join('\n')}`).join('\n')}\n\nBest regards,\n${filterName}`}
+            {report && `Respected ${DEFAULT_MANAGER},\n\nWorking report for ${new Date(fromDate).toLocaleString('default', { month: 'long', year: 'numeric' })}\n\nOverall Report Summary:\n\n* Total active working days: ${report.summary.totalDays}\n* Total hours worked: ${report.summary.totalHours}\n* Leave days: ${report.summary.leaveDays} full days\n* Primary focus: ${report.summary.primaryProject}\n\n* Work distribution:\n${Object.entries(report.summary.distribution).map(([key, val]) => `  * ${key}: ${val}%`).join('\n')}\n\n${report.sections.map(s => `\n${s.id}. ${s.title}\n\n${s.items.map(item => `* ${item}`).join('\n')}`).join('\n')}\n\nBest regards,\n${filterName}`}
           </div>
           <DialogFooter className="gap-3 sm:gap-0">
             <Button variant="outline" onClick={() => setShowEmailModal(false)}>Refine</Button>
