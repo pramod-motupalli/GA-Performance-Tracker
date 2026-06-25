@@ -1,5 +1,5 @@
 export const PROJECT_LIST = [
-  "Zip Pouch","Dr.Naveen Chandra Reddy", "Ravi Hospitals", "GA Digital Solutions", "Tooth Matters", 
+  "Sci Hex","Zip Pouch","Dr.Naveen Chandra Reddy", "Ravi Hospitals", "GA Digital Solutions", "Tooth Matters", 
   "Training & Discussion", "GA Consulting", "JDP & Co.,", "Internal Review Meetings", 
   "Business Management System Design", "Business Development", "Suraksha Builders", 
   "Sreekanth and Co.,", "Leave", "Holiday", "Corp Team", "Lakhani & Co.,", "Kakatiya Media House", 
