@@ -218,7 +218,17 @@ export default function App() {
                 const key = Object.keys(row).find(
                     (k) => k.toLowerCase().trim() === keyName.toLowerCase(),
                 );
-                return row[key] || "";
+                if (key && row[key]) return row[key];
+
+                // Fallbacks for the missing headers in this specific sheet
+                const keyLower = keyName.toLowerCase();
+                if (keyLower === "date") return row._col1 || "";
+                if (keyLower === "resource" || keyLower === "employee") return row._col3 || "";
+                if (keyLower === "project" || keyLower === "client") return row._col4 || "";
+                if (keyLower === "activity" || keyLower === "planned activity for the day") return row._col5 || "";
+                if (keyLower === "total hours") return row._col6 || "";
+
+                return "";
             };
 
             // 1. Calculate stats based on ALL data for this resource in the date range (ignoring project filter for stats)
@@ -329,6 +339,12 @@ export default function App() {
             };
 
             // 2. Filter content for the AI based on the Project filter
+            if (resourceData.length === 0) {
+                throw new Error(
+                    `No logs found for ${filterName} in the selected date range (${fromDate} to ${toDate}).`
+                );
+            }
+
             const contentData = resourceData.filter((row) => {
                 if (!filterProject || filterProject === "All Projects")
                     return true;
@@ -416,6 +432,7 @@ export default function App() {
         2. Ensure every section has relevant content if data is available in the logs.
         3. Maintain highly professional and concise bullet points.
         4. In "distribution", the percentages MUST sum exactly to 100%. 
+        5. CRITICAL: OUTPUT ONLY VALID JSON. Do NOT wrap your response in markdown code blocks (e.g. no \`\`\`json). Provide only the raw JSON object.
         
         RESPONSE FORMAT:
         {
@@ -441,7 +458,7 @@ export default function App() {
                             "Content-Type": "application/json",
                         },
                         body: JSON.stringify({
-                            model: "llama-3.3-70b-versatile",
+                            model: "qwen/qwen3.6-27b",
                             messages: [
                                 {
                                     role: "system",
@@ -450,8 +467,8 @@ export default function App() {
                                 },
                                 { role: "user", content: prompt },
                             ],
-                            response_format: { type: "json_object" },
                             temperature: 0.2,
+                            max_tokens: 8000,
                         }),
                     },
                 );
@@ -464,7 +481,33 @@ export default function App() {
                 }
 
                 const data = await response.json();
-                const reportData = JSON.parse(data.choices[0].message.content);
+                let rawContent = data.choices[0].message.content || "";
+                console.log("DEBUG AI Response:", rawContent);
+                
+                // 1. Remove <think>...</think> blocks entirely (reasoning models)
+                rawContent = rawContent.replace(/<think>[\s\S]*?<\/think>/gi, "");
+
+                // 2. Strip markdown formatting if the model adds it
+                const match = rawContent.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+                if (match) {
+                    rawContent = match[1];
+                }
+                
+                // 3. Fallback: extract just the JSON object if there's surrounding text
+                const jsonStart = rawContent.indexOf('{');
+                const jsonEnd = rawContent.lastIndexOf('}');
+                if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd >= jsonStart) {
+                    rawContent = rawContent.substring(jsonStart, jsonEnd + 1);
+                } else {
+                    throw new Error("AI did not return any JSON object. It may have run out of tokens or failed to follow instructions.");
+                }
+                
+                let reportData;
+                try {
+                    reportData = JSON.parse(rawContent.trim());
+                } catch (parseError) {
+                    throw new Error("AI output could not be parsed as JSON. Output snippet: " + rawContent.substring(0, 50) + "...");
+                }
 
                 // Inject our local stats (including project hours) into the report
                 reportData.summary = {
