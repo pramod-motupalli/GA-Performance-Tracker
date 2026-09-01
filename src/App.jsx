@@ -59,6 +59,9 @@ export default function App() {
             localStorage.getItem("groq_api_key") ||
             "",
     );
+    const [apiBaseUrl, setApiBaseUrl] = useState(
+        localStorage.getItem("api_base_url") || "https://api.mistral.ai/v1"
+    );
     const [sheetUrl, setSheetUrl] = useState(
         import.meta.env.VITE_SHEET_URL ||
             localStorage.getItem("sheet_url") ||
@@ -69,9 +72,13 @@ export default function App() {
             localStorage.getItem("sheet_name") ||
             "Sheet1",
     );
+    const [selectedModel, setSelectedModel] = useState(
+        localStorage.getItem("selected_model") || ""
+    );
+    const [availableModels, setAvailableModels] = useState([]);
 
-    const [fromDate, setFromDate] = useState("2026-03-01");
-    const [toDate, setToDate] = useState("2026-03-31");
+    const [fromDate, setFromDate] = useState("2026-08-01");
+    const [toDate, setToDate] = useState("2026-08-31");
     const [filterName, setFilterName] = useState("Pramod");
     const [filterProject, setFilterProject] = useState("All Projects");
     const [role, setRole] = useState("Developer");
@@ -87,9 +94,49 @@ export default function App() {
     // --- Effects ---
     useEffect(() => {
         localStorage.setItem("groq_api_key", groqApiKey);
+        localStorage.setItem("api_base_url", apiBaseUrl);
         localStorage.setItem("sheet_url", sheetUrl);
         localStorage.setItem("sheet_name", sheetName);
-    }, [groqApiKey, sheetUrl, sheetName]);
+        localStorage.setItem("selected_model", selectedModel);
+    }, [groqApiKey, apiBaseUrl, sheetUrl, sheetName, selectedModel]);
+
+    useEffect(() => {
+        if (groqApiKey && apiBaseUrl) {
+            fetch(`${apiBaseUrl.replace(/\/$/, '')}/models`, {
+                headers: { Authorization: `Bearer ${groqApiKey}` }
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data && data.data) {
+                    const models = data.data.map(m => m.id).filter(id => !id.toLowerCase().includes("whisper"));
+                    console.log(models)
+                    setAvailableModels(models);
+                    
+                    if (!selectedModel || !models.includes(selectedModel)) {
+                        if (models.includes("mistral-medium-3.5")) {
+                            setSelectedModel("mistral-medium-3.5");
+                        } else if (models.includes("mistral-medium-latest")) {
+                            setSelectedModel("mistral-medium-latest");
+                        } else if (models.includes("mistral-medium")) {
+                            setSelectedModel("mistral-medium");
+                        } else if (models.includes("llama-3.3-70b-versatile")) {
+                            setSelectedModel("llama-3.3-70b-versatile");
+                        } else if (models.includes("llama-3.1-70b-versatile")) {
+                            setSelectedModel("llama-3.1-70b-versatile");
+                        } else if (models.includes("groq/compound")) {
+                            setSelectedModel("groq/compound");
+                        } else if (models.includes("groq/compound-mini")) {
+                            setSelectedModel("groq/compound-mini");
+                        } else if (models.length > 0) {
+                            setSelectedModel(models[0]);
+                        }
+                    }
+                }
+            })
+            .catch(console.error);
+        }
+        
+    }, [groqApiKey]);
 
     // --- Helpers ---
     const parseCSV = (csvText) => {
@@ -449,27 +496,29 @@ export default function App() {
 
             // --- AI API Selection ---
             if (groqApiKey) {
+                const requestBody = {
+                    model: selectedModel || "mistral-medium-3.5",
+                    messages: [
+                        {
+                            role: "system",
+                            content:
+                                "You are a professional performance analyst. Categorize work logs into the provided sections based on their primary function and deliver professional results in JSON.",
+                        },
+                        { role: "user", content: prompt },
+                    ],
+                    temperature: 0.2,
+                    max_tokens: 4000,
+                };
+
                 const response = await fetch(
-                    "https://api.groq.com/openai/v1/chat/completions",
+                    `${apiBaseUrl.replace(/\/$/, '')}/chat/completions`,
                     {
                         method: "POST",
                         headers: {
                             Authorization: `Bearer ${groqApiKey}`,
                             "Content-Type": "application/json",
                         },
-                        body: JSON.stringify({
-                            model: "qwen/qwen3.6-27b",
-                            messages: [
-                                {
-                                    role: "system",
-                                    content:
-                                        "You are a professional performance analyst. Categorize work logs into the provided sections based on their primary function and deliver professional results in JSON.",
-                                },
-                                { role: "user", content: prompt },
-                            ],
-                            temperature: 0.2,
-                            max_tokens: 8000,
-                        }),
+                        body: JSON.stringify(requestBody),
                     },
                 );
 
@@ -506,7 +555,9 @@ export default function App() {
                 try {
                     reportData = JSON.parse(rawContent.trim());
                 } catch (parseError) {
-                    throw new Error("AI output could not be parsed as JSON. Output snippet: " + rawContent.substring(0, 50) + "...");
+                    console.error("JSON Parse Error:", parseError);
+                    console.error("Truncated JSON string:", rawContent);
+                    throw new Error("AI output was cut off and resulted in incomplete JSON. The model may have hit its max_tokens limit. Try reducing the date range (e.g. 1 week at a time) or switching models.");
                 }
 
                 // Inject our local stats (including project hours) into the report
@@ -676,15 +727,24 @@ export default function App() {
                                 <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6">
                                     <div className="space-y-2">
                                         <label className="text-sm font-semibold text-slate-700">
-                                            Groq (Llama) API Key
+                                            API Key
                                         </label>
                                         <Input 
                                             type="password"
                                             value={groqApiKey} 
                                             onChange={(e) => setGroqApiKey(e.target.value)}
-                                            placeholder="gsk_..."
+                                            placeholder="sk-..."
                                         />
-                                        <p className="text-[10px] text-slate-400">Prefer setting VITE_GROQ_API_KEY in .env</p>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-semibold text-slate-700">
+                                            API Base URL
+                                        </label>
+                                        <Input 
+                                            value={apiBaseUrl} 
+                                            onChange={(e) => setApiBaseUrl(e.target.value)}
+                                            placeholder="https://api.mistral.ai/v1"
+                                        />
                                     </div>
                                     <div className="space-y-2">
                                         <label className="text-sm font-semibold text-slate-700">
@@ -709,6 +769,33 @@ export default function App() {
                                             }
                                             placeholder="e.g. Sheet1"
                                         />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-semibold text-slate-700">
+                                            AI Model
+                                        </label>
+                                        <Select
+                                            value={selectedModel}
+                                            onValueChange={setSelectedModel}
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Select Model" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {availableModels.length === 0 ? (
+                                                    <SelectItem value={selectedModel || "mistral-medium-3.5"}>
+                                                        {selectedModel || "Loading..."}
+                                                    </SelectItem>
+                                                ) : (
+                                                    availableModels.map(modelId => (
+                                                        <SelectItem key={modelId} value={modelId}>
+                                                            {modelId}
+                                                        </SelectItem>
+                                                    ))
+                                                )}
+                                            </SelectContent>
+                                        </Select>
+                                        <p className="text-[10px] text-slate-400">Models fetched automatically from your API key</p>
                                     </div>
                                 </CardContent>
                             </Card>
